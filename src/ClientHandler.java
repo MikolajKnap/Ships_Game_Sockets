@@ -13,6 +13,7 @@ public class ClientHandler implements Runnable{
 
     private Server server;
     private Room currentRoom;
+    private InputStream inputStream;
 
     public ClientHandler(Socket socket, Server server){
         try{
@@ -22,6 +23,7 @@ public class ClientHandler implements Runnable{
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             this.username = bufferedReader.readLine();
             clientHandlers.add(this);
+            this.inputStream = socket.getInputStream();
 
         }
         catch (IOException e){
@@ -60,19 +62,34 @@ public class ClientHandler implements Runnable{
                     }
                 }
                 else if (messageFromClient.equals("3")){
-                    server.wyswietl();
+                    sendMessage(server.getRooms().toString());
+
                 }
             }
-            messageFromClient = bufferedReader.readLine();
+            //messageFromClient = bufferedReader.readLine();
 
             while(socket.isConnected()){
-                ;
+                byte[] receivedData = new byte[400];
+                inputStream.read(receivedData);
+
+                int[][] receivedGameBoard = convertBytesToIntArray(receivedData);
+                drawBoard(receivedGameBoard);
             }
         }
         catch (IOException e){
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
 
+    }
+
+    public void drawBoard(int board[][]){
+        int boardSize = 10;
+        for(int i = 0; i<boardSize; i++){
+            for(int j = 0; j<boardSize; j++){
+                System.out.print(board[i][j] + " ");
+            }
+            System.out.println(" ");
+        }
     }
 
     public void broadcastMessage(String messageToSend){
@@ -130,6 +147,25 @@ public class ClientHandler implements Runnable{
         catch(IOException e){
             e.printStackTrace();
         }
+    }
+
+    public int[][] convertBytesToIntArray(byte[] bytes) {
+        ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
+        DataInputStream dis = new DataInputStream(bis);
+
+        int[][] array = new int[10][10];
+
+        try {
+            for (int i = 0; i < array.length; i++) {
+                for (int j = 0; j < array[i].length; j++) {
+                    array[i][j] = dis.readInt();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return array;
     }
 
 

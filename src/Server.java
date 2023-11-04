@@ -51,6 +51,7 @@ public class Server {
 
     public synchronized Room createRoom(String roomName, ClientHandler host) {
         Room room = new Room(roomName, host);
+        rooms.add(room);
         return room;
     }
     public void wyswietl(){
