@@ -35,9 +35,12 @@ public class ClientHandler implements Runnable{
     public void run() {
         String messageFromClient;
         Boolean step1 = false;
+
         try{
             while(socket.isConnected() && !step1){
-                messageFromClient = bufferedReader.readLine();
+                requestMessage();
+                messageFromClient = readMessageFromClient();
+
                 if(messageFromClient.equals("1")){
                     String roomName = String.format(this.username + "'s Room");
                     currentRoom = server.createRoom(roomName, this);
@@ -45,6 +48,8 @@ public class ClientHandler implements Runnable{
                     step1 = true;
                 }
                 else if (messageFromClient.equals("2")){
+                    sendMessage("Enter room name: ");
+                    requestMessage();
                     String roomName = bufferedReader.readLine();
                     Room roomToJoin = server.getRooms().stream()
                             .filter(room -> room.getRoomName().equals(roomName))
@@ -54,7 +59,7 @@ public class ClientHandler implements Runnable{
                         roomToJoin.addPlayer(this);
                         currentRoom = roomToJoin;
                         sendMessage("Joined room: " + roomToJoin.getRoomName());
-                        sendMessageToClient("Player has joined your room!",roomToJoin.getPlayer2());
+                        sendMessageToClient("Player has joined your room!",roomToJoin.getHost());
                         step1 = true;
                     }
                     else {
@@ -66,7 +71,6 @@ public class ClientHandler implements Runnable{
 
                 }
             }
-            //messageFromClient = bufferedReader.readLine();
 
             while(socket.isConnected()){
                 byte[] receivedData = new byte[400];
@@ -106,6 +110,19 @@ public class ClientHandler implements Runnable{
         }
     }
 
+    public void requestMessage() {
+        try {
+            bufferedWriter.write("REQUEST_DATA");
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+        } catch (IOException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter);
+        }
+    }
+
+    public String readMessageFromClient() throws IOException {
+        return bufferedReader.readLine();
+    }
     public void sendMessage(String message) {
         try {
             bufferedWriter.write(message);

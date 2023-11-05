@@ -185,35 +185,45 @@ public class Client {
         return bos.toByteArray();
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
-        String messageFromServer;
-        String messageToServer;
-        System.out.println("WELCOME TO THE SHIPS GAME");
-        System.out.println("Enter your username: ");
+    public void start() {
+        // Wątek nasłuchujący serwera
+        Thread serverListenerThread = new Thread(() -> {
+            try {
+                while (true) {
+                    String messageFromServer = bufferedReader.readLine();
+                    // Przekazanie wiadomości do wątku obsługi klienta
+                    processServerMessage(messageFromServer);
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        serverListenerThread.start();
+    }
 
+    public void processServerMessage(String messageFromServer){
+        if (messageFromServer.equals("REQUEST_DATA")) {
+            // Serwer prosi o przesłanie danych
+            System.out.println("Player input: ");
+            Scanner scannerProcess = new Scanner(System.in);
+            String messageToServer = scannerProcess.nextLine();
+            sendMessage(messageToServer);
+        } else {
+            System.out.println("\n" + messageFromServer);
+        }
+    }
+
+    public static void main(String[] args) throws IOException, InterruptedException {
+        Socket socket = new Socket("localhost", 1234);
+
+        System.out.println("WELCOME TO THE BATTLESHIPS GAME");
+        System.out.println("Enter your username: ");
         Scanner scanner = new Scanner(System.in);
         String username = scanner.nextLine();
+        System.out.println("\nChoose 1 - create room\nChoose 2 - join room\nChoose 3 - view rooms\n");
 
-        Socket socket = new Socket("localhost", 1234);
         Client client = new Client(socket, username);
         client.sendMessage(username);
-
-        System.out.println("Choose 1 - create room\nChoose 2 - join room\nChoose 3 - view rooms\n");
-        messageToServer = scanner.nextLine();
-        client.sendMessage(messageToServer);
-        messageFromServer = client.bufferedReader.readLine();
-        System.out.println(messageFromServer);
-
-        client.placeShips(4,"a1 a2 a3 a4");
-        client.placeShips(3,"a5 a6 a7");
-        client.drawGameBoard();
-
-        byte[] dataToSend = client.convertIntArrayToBytes(client.gameBoard);
-        client.outputStream.write(dataToSend);
-
-        //System.out.println("\nMasz dostepne 5 statkow:\nJeden statek o dlugosci 4\nJeden statek o dlugosci 3\nJeden statek o dlugosci 2\nDwa statki o dlugosci 1:");
-        //System.out.println("Wybierz pozycje dla statku o dlugosci 4 (format: A2 A3 A4 A5)");
-
-
+        client.start();
     }
 }
