@@ -69,7 +69,7 @@ public class Client {
         }
     }
 
-    public void placeShips(int shipLength, String positions) {
+    public boolean placeShips(int shipLength, String positions) {
         positions = positions.toUpperCase();
         String[] positionsArray = positions.split(" ");
         int[][] tempGameBoard = new int[10][10];
@@ -90,10 +90,11 @@ public class Client {
             } else {
                 // Pole jest niedostępne
                 System.out.println("Position unavailable");
-                break;
+                return false;
             }
         }
         copy2DArray(tempGameBoard,gameBoard);
+        return true;
     }
     public boolean isPositionEmpty(int x, int y) {
         int fillingCharacter = 0;
@@ -103,10 +104,7 @@ public class Client {
         }
         return false;
     }
-    // 1 - 4 kratki
-    // 2 - 3 kratki
-    // 3 - 2 kratki
-    // 4 - 1 kratka
+
     public boolean isPositionAvailable(int x, int y){
         if(isPositionEmpty(x, y)){
             // Przypadek pierwszego wiersza
@@ -153,12 +151,22 @@ public class Client {
     }
 
     public void drawGameBoard(){
+        char[] columnLabels = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'};
         int boardSize = 10;
-        for(int i = 0; i<boardSize; i++){
-            for(int j = 0; j<boardSize; j++){
-                System.out.print(gameBoard[i][j] + " ");
+
+        // Print column labels
+        System.out.print(" \t");
+        for (char label : columnLabels) {
+            System.out.print(label + "\t");
+        }
+        System.out.println();
+
+        for(int i = 0; i < boardSize; i++){
+            System.out.print((i + 1) + "\t"); // Print row label
+            for(int j = 0; j < boardSize; j++){
+                System.out.print(gameBoard[i][j] + "\t");
             }
-            System.out.println(" ");
+            System.out.println();
         }
     }
 
@@ -201,14 +209,41 @@ public class Client {
         serverListenerThread.start();
     }
 
-    public void processServerMessage(String messageFromServer){
+    public void processServerMessage(String messageFromServer) throws IOException {
         if (messageFromServer.equals("REQUEST_DATA")) {
             // Serwer prosi o przesłanie danych
             System.out.println("Player input: ");
             Scanner scannerProcess = new Scanner(System.in);
             String messageToServer = scannerProcess.nextLine();
             sendMessage(messageToServer);
-        } else {
+        }
+        else if(messageFromServer.equals("SHIPS_PLACEMENT_PHASE")){
+            String positions;
+            Scanner scannerShips = new Scanner(System.in);
+            int shipsAmount = Integer.parseInt(bufferedReader.readLine());
+            int shipLength = 1;
+            boolean flaga = true;
+
+            System.out.println("PLACE YOUR SHIPS");
+            System.out.println("Placing ship format for 3 block ship: a1 a2 a3\n");
+            for(int i = 1; i<=shipsAmount; i++){
+                if(flaga) shipLength = Integer.parseInt(bufferedReader.readLine());
+                drawGameBoard();
+                System.out.println("Place " + shipLength + " block size ship:");
+                positions = scannerShips.nextLine();
+                if(placeShips(shipLength, positions)){
+                    sendMessage("ack"); // Nie wiem czy to potrzebne, ale w ten sposob potwierdzam ze klient jest gotowy do odbioru danych
+                    flaga = true;
+                }
+                else{
+                    i = i-1;
+                    flaga = false;
+                }
+            }
+            System.out.println("Your final board:\n");
+            drawGameBoard();
+        }
+        else {
             System.out.println("\n" + messageFromServer);
         }
     }
