@@ -72,8 +72,41 @@ public class Client {
     public boolean placeShips(int shipLength, String positions) {
         positions = positions.toUpperCase();
         String[] positionsArray = positions.split(" ");
+
+        // Sprawdzanie czy gracz podal dobra ilosc pozycji
+        if(positionsArray.length != shipLength){
+            System.out.println("Wrong ship size!");
+            return false;
+        }
+
+        String onlyNumbers = positions.replaceAll("[^0-9]", "");
+        String[] sortedPositions = new String[positionsArray.length];
+        System.arraycopy(positionsArray, 0, sortedPositions, 0, positionsArray.length);
+        Arrays.sort(sortedPositions);
+        if(onlyCharacters(onlyNumbers)){
+            for(int i = 1; i<sortedPositions.length; i++){
+                int letterToNumber = (int) sortedPositions[i].charAt(0) - (int) 'A';
+                int prevLetterToNumber = (int) sortedPositions[i-1].charAt(0) - (int) 'A';
+                if(letterToNumber - prevLetterToNumber != 1){
+                    System.out.println("Position unavailable");
+                    return false;
+                }
+            }
+        }
+        else{
+            for(int i = 1; i<sortedPositions.length; i++) {
+                int letterToNumber = sortedPositions[i].charAt(1) - '0';
+                int prevLetterToNumber = sortedPositions[i - 1].charAt(1) - '0';
+                if (letterToNumber - prevLetterToNumber != 1) {
+                    System.out.println("Position unavailable");
+                    return false;
+                }
+            }
+        }
+
         int[][] tempGameBoard = new int[10][10];
         copy2DArray(gameBoard,tempGameBoard);
+
         // Dla każdej pozycji statku
         for (String position : positionsArray) {
             // Wyodrebniamy literę i cyfrę
@@ -96,6 +129,15 @@ public class Client {
         copy2DArray(tempGameBoard,gameBoard);
         return true;
     }
+
+    public boolean onlyCharacters(String input){
+        char firstChar = input.charAt(0);
+        for(int i = 1; i < input.length(); i++){
+            if(input.charAt(i) != firstChar) return false;
+        }
+        return true;
+    }
+
     public boolean isPositionEmpty(int x, int y) {
         int fillingCharacter = 0;
         int gameBoardSize = 10;
@@ -122,6 +164,7 @@ public class Client {
                 }
             }
             else{
+                // Przypadek srodka, sprawdzamy gora dol
                 if(gameBoard[x-1][y] != 0 || gameBoard[x+1][y] != 0){
                     return false;
                 }
@@ -140,6 +183,7 @@ public class Client {
                     return false;
                 }
             }
+            // Przypadek srodka, sprawdzamy lewo prawo
             else{
                 if(gameBoard[x][y+1] != 0 || gameBoard[x][y-1] != 0){
                     return false;
@@ -151,18 +195,18 @@ public class Client {
     }
 
     public void drawGameBoard(){
-        char[] columnLabels = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'};
+        char[] rowLabels = {'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'};
         int boardSize = 10;
 
         // Print column labels
         System.out.print(" \t");
-        for (char label : columnLabels) {
-            System.out.print(label + "\t");
+        for (int i = 1; i<=10; i++) {
+            System.out.print(i + "\t");
         }
         System.out.println();
 
         for(int i = 0; i < boardSize; i++){
-            System.out.print((i + 1) + "\t"); // Print row label
+            System.out.print((rowLabels[i]) + "\t"); // Print row label
             for(int j = 0; j < boardSize; j++){
                 System.out.print(gameBoard[i][j] + "\t");
             }
