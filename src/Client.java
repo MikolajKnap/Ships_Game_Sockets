@@ -130,7 +130,7 @@ public class Client {
         for (String position : positionsArray) {
             // Wyodrebniamy literę i cyfrę
             char letter = position.charAt(0);
-            int number = Integer.parseInt(position.substring(1)) - 1;
+            int number = Character.getNumericValue(position.charAt(1)) - 1;
 
             // Przeksztalcamy literę na indeks wiersza (np. A -> 0, B -> 1, C -> 2)
             int row = (int) letter - (int) 'A';
@@ -156,6 +156,7 @@ public class Client {
     // I w ten sposob sprawdzamy czy mamy statek w pozycji pionowej czy poziomej
     // Zajmujemy sie tylko cyframi bo jak cyfry nie beda zgodne to wiadomo ze musimy zajac sie literami
     public boolean onlyCharacters(String input){
+        if(input.isEmpty()) return false;
         char firstChar = input.charAt(0);
         for(int i = 1; i < input.length(); i++){
             if(input.charAt(i) != firstChar) return false;
