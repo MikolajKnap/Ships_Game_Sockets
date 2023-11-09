@@ -24,12 +24,12 @@ public class ClientHandler implements Runnable{
             this.socket = socket;
             this.server = server;
 
-            this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-            this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            this.inputStream = socket.getInputStream();
+            this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())); // To jest wykorzystywane, zeby moc przesylac Stringi do serwera
+            this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream())); // To jest wykorzystywane, zeby moc odbierac Stringi od serwera
+            this.inputStream = socket.getInputStream(); // To jest uzywane zeby moc przesylac bajty do serwera
 
-            this.username = bufferedReader.readLine();
-            clientHandlers.add(this);
+            this.username = bufferedReader.readLine(); // Po polaczeniu sie clienta z serwerem automatycznie w klient handlerze czekamy na wiadomosc od clienta z usernamem
+            clientHandlers.add(this); // Dodajemy kazdego ClientHandlera do listy clientHandlerow zeby moc w razie czego wyszukiwac
 
         }
         catch (IOException e){
@@ -41,7 +41,7 @@ public class ClientHandler implements Runnable{
      * Function to draw 2d int array
      * @param board 2d int array to draw
      */
-    public void drawBoard(int[][] board){
+    public void drawBoard(int[][] board){ // Funkcja uzywana do debugowania, useless actually
         int boardSize = 10;
         for(int i = 0; i<boardSize; i++){
             for(int j = 0; j<boardSize; j++){
@@ -56,9 +56,10 @@ public class ClientHandler implements Runnable{
      */
     public void requestMessage() {
         try {
-            bufferedWriter.write("REQUEST_DATA");
-            bufferedWriter.newLine();
-            bufferedWriter.flush();
+            // Wytlumacze raz dlaczego w taki sposob to wyglada
+            bufferedWriter.write("REQUEST_DATA"); // Zapisujemy faktycznie jaka wiadomosc chcemy wyslac
+            bufferedWriter.newLine(); // Dodajemy na koncu koniec lini zeby bylo bardziej czytelnie
+            bufferedWriter.flush(); // Tutaj przekazujemy te dane z bufora do strumienia wyjsciowego (czyli wysylamy)
         } catch (IOException e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
@@ -69,7 +70,7 @@ public class ClientHandler implements Runnable{
      * @return String message that is send by client
      */
     public String readMessageFromClient() throws IOException {
-        return bufferedReader.readLine();
+        return bufferedReader.readLine(); // Chyba oczywiste, odczytujemy Stringa od Clienta
     }
 
     /**
@@ -165,22 +166,35 @@ public class ClientHandler implements Runnable{
         Boolean step1 = false;      // Flag to stop 1st while loop TODO mysle ze da sie bez flagi za pomoca break
 
         try{
+            // Moj zamysl byl taki zeby zrobic cala obsluge Clienta w tej klasie bo idk jak sie robi inaczej
+            // Ma to dzialac w ten sposob, ze wejdziemy w kilka faz
+            // Faza pierwsza (step1) to faza domyslna czyli wybieranie co chcemy zrobic
+            // Tutaj mozemy 1. Stworzyc swoj pokoj
+            // 2. Doalaczyc do pokoju
+            // 3. Zobaczysz liste pokojow
+            // Dopoki nie zrobimy 1 lub 2 etapu dobrze to nie przejdziemy dalej, bo petla sie bedzie powtarzac
+
+            // Plan tez mialem taki, zeby serwer wysylal kiedy chce dostac co od clienta
+            // Dlatego aktualnie client nasluchuje caly czas wiadomosci od serwera i kiedy otrzyma polecenie o konkretnym kodzie (tresci)
+            // To robi konkretne rzeczy, widac to w funkcji Clienta ktora odbiera wiadomsoci
             while(socket.isConnected() && !step1){
-                requestMessage();
-                messageFromClient = readMessageFromClient();
+                requestMessage(); // Wysylamy prosbe o przeslanie wiadomosci (wyjasnienie jak to dziala jest w funkcjach Clienta)
+                messageFromClient = readMessageFromClient(); // Tutaj odczytujemy przeslana wiadomosc
 
                 // First option is to create room
-                if(messageFromClient.equals("1")){
-                    String roomName = String.format(this.username + "'s Room");
-                    currentRoom = server.createRoom(roomName, this);
-                    sendMessage("Room created: " + roomName);
+                if(messageFromClient.equals("1")){ // Jesli odczytania wiadomosc to 1 (tworzenie pokoju)
+                    String roomName = String.format(this.username + "'s Room"); // Tworzymy pokoj o nazwie, przyklad: Gieniek's Room
+                    // TODO prawdopodobnie beda problemy kiedy bedziemy mieli graczy o tej samej nazwie
+                    // TODO wiec mysle ze trzeba bedzie zrobic dodawanie samemu nazwy pokoju i sprawdzanie czy taki pokoj juz nie istnieje
+                    currentRoom = server.createRoom(roomName, this); // Tworzymy pokoj, od razu przekazujemy hosta
+                    sendMessage("Room created: " + roomName); // Wysylamy wiadomosc do clienta ze zrobil pokoj
                     step1 = true;   // Break from loop when room created
                 }
                 // Second option is to join to existing room
                 else if (messageFromClient.equals("2")){
-                    sendMessage("Enter room name: ");
-                    requestMessage();
-                    String roomName = bufferedReader.readLine();
+                    sendMessage("Enter room name: "); // Wysylamy komunikat do klienta zeby podal roomName do ktorego chce wbic
+                    requestMessage(); // Prosimy o przeslanie danych
+                    String roomName = bufferedReader.readLine(); // Tutaj odczytujemy co podal
                     Room roomToJoin = server.getRooms().stream()
                             .filter(room -> room.getRoomName().equals(roomName))
                             .findFirst()
@@ -190,8 +204,8 @@ public class ClientHandler implements Runnable{
                         if(roomToJoin.getPlayer2() == null){
                             roomToJoin.addPlayer2(this);
                             currentRoom = roomToJoin;
-                            sendMessage("Joined room: " + roomToJoin.getRoomName());
-                            sendMessageToClient("Player has joined your room!",roomToJoin.getHost());
+                            sendMessage("Joined room: " + roomToJoin.getRoomName()); // To jest wiadomosc wyslana do obecnego ClientHandlera, czyli do goscia co chce wbic do pokoju
+                            sendMessageToClient("Player has joined your room!",roomToJoin.getHost()); // To wiadomosc wysylana do hosta pokoju
                             step1 = true;   // Break from loop when joined room
                         }
                         else{
@@ -208,13 +222,20 @@ public class ClientHandler implements Runnable{
                 }
             }
 
-            sendMessage("SHIPS_PLACEMENT_PHASE");
-            int shipsAmount = 4;
+            // Zamysl jest taki, ze po tym jak sa dwie osoby w pokoju to wchodzimy w faze ukladania statkow
+            sendMessage("SHIPS_PLACEMENT_PHASE"); // Wysylamy wiadomosc do klienta, ktory ja przetwarza i robi swoje rzeczy (do zobaczenia w klasie Client)
+            int shipsAmount = 4; // Dla testowania przyjalem 4 statkik
             String ack;
-            sendMessage(String.format("%d",shipsAmount));
+            sendMessage(String.format("%d",shipsAmount)); // Przesylam klientowi ile statkow ma ulozyc
             for(int i = 1; i <= shipsAmount; i++){
-                sendMessage(String.format("%d",i));
-                ack = bufferedReader.readLine();
+                sendMessage(String.format("%d",i)); // Przesylam klientowi jakiej wielkosci ma byc statek
+                // Ogolnie jest to na razie zrobione tak ze uzylem petli for, bo nie chcialo mi sie pisac tego kilka razy, wiec na razie jest
+                // 1 blokowy 1 statek, 2 blokowy 1 statek itd.
+                ack = bufferedReader.readLine(); // TODO ogolnie nie wiedzialem czy to bedzie dzialac bez tego
+                // TODO logika moja byla taka, zeby ta petla sie nie wywyolala od razu cala
+                // TODO to klient musi potwierdzic ze zrobil co mial zrobic zeby przeszlo dalej
+                // TODO w tym celu wysylam ack message, nawet nie sprawdzamy jej tresci tylko po prostu czekamy az cos przesle
+                // TODO trzeba sprawdzic czy jest to konieczne
             }
 
             while(socket.isConnected()){

@@ -69,8 +69,13 @@ public class Client {
         }
     }
 
+    // Cala logika kladzenia statkow jest tutaj
+    // Masakryczna robota
     public boolean placeShips(int shipLength, String positions) {
+        // Na poczatku zmieniamy podane przez ziomsa pozycje na duze litery, zeby moc pozniej zrobic konwersje liter na int pozycje dla tablicy
         positions = positions.toUpperCase();
+
+        // Tworzymy tabele, gdzie kazdy wyraz w tabeli to np. [0] = "a1", [1] = "a2"
         String[] positionsArray = positions.split(" ");
 
         // Sprawdzanie czy gracz podal dobra ilosc pozycji
@@ -79,12 +84,24 @@ public class Client {
             return false;
         }
 
+        // Z stringa przykladowego a1 a2 a3 a4, zostawiamy same cyfy = 1234
         String onlyNumbers = positions.replaceAll("[^0-9]", "");
+
+        // Tutaj robimy nowa tabele takiej samej wielkosci jak ta w ktorej zapisalismy pozycje
         String[] sortedPositions = new String[positionsArray.length];
-        System.arraycopy(positionsArray, 0, sortedPositions, 0, positionsArray.length);
-        Arrays.sort(sortedPositions);
-        if(onlyCharacters(onlyNumbers)){
+        System.arraycopy(positionsArray, 0, sortedPositions, 0, positionsArray.length); // Do nowej tablicy kopiujemy stara
+        Arrays.sort(sortedPositions); // Ta nowa tablice sortujemy, jesli bylyby pozycje a2 a3 a1 to bedzie a1 a2 a3, a jak a1 c1 d1 to bedzie a1 c1 d1
+
+        // Warto rozkminic ze mamy tylko dwie mozliwe kierunki ukladania statkow w poziomie albo pionowo
+        // Wiec kiedy jest poziomo to litera musi byc ta sama a zmienia sie tylko liczba
+        // A kiedy jest pionowo to liczba jest ta sama a zmienia sie tylko litera
+        // Jesli mamy sytuacje ze cyfry sa te same to znaczy ze aby sprawdzic czy pozycja jest legalna musimy zajmowac sie literami
+        // Natomiast jesli cyfry nie sa te same to znaczy ze musimy zajac sie cyframi zeby sprawdzic czy pozycja jest legalna
+        // Tutaj sprawdzamy tylko czy kolejne pozycje znajduja sie obok siebie, np. czy statek o wielkosci 3 blokow nie jest a1 a3 a4 bo bylaby dziura
+        if(onlyCharacters(onlyNumbers)){ // Zobacz do funkcji onlyCharacters
             for(int i = 1; i<sortedPositions.length; i++){
+                // Filip wykminił ze aby pozycja byla poprawna to roznica miedzy kolejna pozycja a poprzednai musi byc == 1
+                // Wiec po prostu to sprawdzamy
                 int letterToNumber = (int) sortedPositions[i].charAt(0) - (int) 'A';
                 int prevLetterToNumber = (int) sortedPositions[i-1].charAt(0) - (int) 'A';
                 if(letterToNumber - prevLetterToNumber != 1){
@@ -103,7 +120,9 @@ public class Client {
                 }
             }
         }
-
+        // Ogolnie potrzebujemy zapasowej tablicy gry, poniewaz przy kladzeniu kolejnych pozycji jednego statku
+        // Mielibysmy problem z sprawdzaniem czy mozna go tutaj polozyc bo poprzednia pozycja by to zaklocala
+        // Jak cos to wytlumacze to slownie bo duzo pisania
         int[][] tempGameBoard = new int[10][10];
         copy2DArray(gameBoard,tempGameBoard);
 
@@ -126,10 +145,16 @@ public class Client {
                 return false;
             }
         }
+        // Jesli wszystkie pozycje sa okej to mozemy skopiowac nasza zapasowa tablice na faktyczna tablice gry
         copy2DArray(tempGameBoard,gameBoard);
         return true;
     }
 
+    // Ta funkcja ma za zadanie sprawdzic czy podany String skalda sie z tych samych znakow wszedzie
+    // W praktyce jest ona uzywana do sprawdzenia dla przykladowego stringa: 1111
+    // Czy pierwsza 1ka jest jedynym znakiem w calym stringu
+    // I w ten sposob sprawdzamy czy mamy statek w pozycji pionowej czy poziomej
+    // Zajmujemy sie tylko cyframi bo jak cyfry nie beda zgodne to wiadomo ze musimy zajac sie literami
     public boolean onlyCharacters(String input){
         char firstChar = input.charAt(0);
         for(int i = 1; i < input.length(); i++){
@@ -138,6 +163,7 @@ public class Client {
         return true;
     }
 
+    // Ta funkcja sprawdza czy na danej pozycji nie mamy juz zajete miejsca
     public boolean isPositionEmpty(int x, int y) {
         int fillingCharacter = 0;
         int gameBoardSize = 10;
@@ -147,6 +173,10 @@ public class Client {
         return false;
     }
 
+    // Ta funkcja sprawdza czy sasiedzi pozycji nie sa juz zajeci, bo jak wiemy w statkach nie mozemy obok siebie ich klasc
+    // Ogolnie to ogarnialem z Filipem, wiec mysle ze nie musze tego bardzo tlumaczyc
+    // Kamil to szybko zalapie bo to w jego stylu zadanie
+    // Pewnie jeszcze powie ze dalo sie lepiej zrobic
     public boolean isPositionAvailable(int x, int y){
         if(isPositionEmpty(x, y)){
             // Przypadek pierwszego wiersza
@@ -220,6 +250,8 @@ public class Client {
         }
     }
 
+    // Idk jak to dziala, ale zamysl jest taki zeby przeslac tablice dwuwymiarowa do serwera
+    // Ta funkcja po prostu zmienia tablice intArray 2d na bajty
     public byte[] convertIntArrayToBytes(int[][] array) {
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         DataOutputStream dos = new DataOutputStream(bos);
@@ -242,9 +274,8 @@ public class Client {
         Thread serverListenerThread = new Thread(() -> {
             try {
                 while (true) {
-                    String messageFromServer = bufferedReader.readLine();
-                    // Przekazanie wiadomości do wątku obsługi klienta
-                    processServerMessage(messageFromServer);
+                    String messageFromServer = bufferedReader.readLine(); // Caly czas jestesmy gotowi do odebrania wiadomosci od serwera
+                    processServerMessage(messageFromServer); // Odczytana wiadomosc przekazujemy do obslugi wiadomosci (funkcja processServerMessage)
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -254,6 +285,8 @@ public class Client {
     }
 
     public void processServerMessage(String messageFromServer) throws IOException {
+        // W ten sposob wiemy, ze serwer chce zebysmy wprowadzili jakis input
+        // Czyli jak odbierzemy komunikat od serwera "REQUEST_DATA" to wiemy co mamy zrobic
         if (messageFromServer.equals("REQUEST_DATA")) {
             // Serwer prosi o przesłanie danych
             System.out.println("Player input: ");
@@ -261,24 +294,27 @@ public class Client {
             String messageToServer = scannerProcess.nextLine();
             sendMessage(messageToServer);
         }
+        // Tutaj jak odbierzemy taki komunikat, to wchodzimy w faze kladzenia statkow
         else if(messageFromServer.equals("SHIPS_PLACEMENT_PHASE")){
             String positions;
             Scanner scannerShips = new Scanner(System.in);
-            int shipsAmount = Integer.parseInt(bufferedReader.readLine());
+            int shipsAmount = Integer.parseInt(bufferedReader.readLine()); // Pierwsza wiadomosc ktora mamy otrzymac od serwera to ile statkow
             int shipLength = 1;
             boolean flaga = true;
 
             System.out.println("PLACE YOUR SHIPS");
-            System.out.println("Placing ship format for 3 block ship: a1 a2 a3\n");
+            System.out.println("Placing ship example format for 3 block ship: a1 a2 a3\n");
             for(int i = 1; i<=shipsAmount; i++){
-                if(flaga) shipLength = Integer.parseInt(bufferedReader.readLine());
-                drawGameBoard();
+                if(flaga) shipLength = Integer.parseInt(bufferedReader.readLine()); // Odbieramy wiadomosc od serwera odnosnie wielkosci statku, jesli flaga jest true
+                drawGameBoard(); // Rysujemy obecna plansze
                 System.out.println("Place " + shipLength + " block size ship:");
                 positions = scannerShips.nextLine();
+                // Jesli placeShips zwroci nam wartosc true to mozemy przejsc dalej, czyli statki sa ulozone dobrze i potwierdzamy i przechodzimy dalej
                 if(placeShips(shipLength, positions)){
                     sendMessage("ack"); // Nie wiem czy to potrzebne, ale w ten sposob potwierdzam ze klient jest gotowy do odbioru danych
                     flaga = true;
                 }
+                // Natomiast jesli nam zwroci false, to znaczy ze pozycja statkow byla zla i trzeba jeszcze raz poprosic o to samo
                 else{
                     i = i-1;
                     flaga = false;
@@ -287,6 +323,11 @@ public class Client {
             System.out.println("Your final board:\n");
             drawGameBoard();
         }
+        // Aktualnie defaultowy przypadek to po prostu wyswietlenie co serwer wyslal w terminalu clienta
+        // Jest tak zrobione bo latwo sie tego uzywa, tak to trzeba byloby za kazdym razem wysylac:
+        // Wiadomosc ze ma wyswietlic i pozniej jeszcze raz wysylac jaka ma wyswietlic
+        // Mozliwe ze pozniej sie okaze ze trzeba to zmienic, bo cos tam cos tam
+        // To wtedy sie zmieni, na razie dziala
         else {
             System.out.println("\n" + messageFromServer);
         }
@@ -302,7 +343,10 @@ public class Client {
         System.out.println("\nChoose 1 - create room\nChoose 2 - join room\nChoose 3 - view rooms\n");
 
         Client client = new Client(socket, username);
-        client.sendMessage(username);
-        client.start();
+        client.sendMessage(username); // Ogolnie musimy podac najpierw username do serwera, bo mamy w konstruktorze ClientHandlera od razu nasluchiwanie
+                                      // Ktore oczekuje zebysmy to podali
+        client.start(); // Ropoczynamy nasluchiwanie w oddzielnym watku, zeby nie zacinac wszystkiego
+        // W sumie to nie jestem pewny czy to trzeba w osobnym watku, ale tak jest cool B)
+        // Wyjasnienie dzialania klienta warto zaczac od funkcji start
     }
 }
