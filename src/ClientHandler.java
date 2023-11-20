@@ -1,8 +1,6 @@
 import java.io.*;
-import java.lang.reflect.Array;
 import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -61,47 +59,51 @@ public class ClientHandler implements Runnable {
 
     public void menuPhase() throws IOException {
         String messageFromClient;
+        label:
         while (socket.isConnected()) {
             requestMessage();
             messageFromClient = readMessageFromClient();
-            if (messageFromClient.equals("1")) {
-                String roomName = String.format(this.username + "'s Room"); // Tworzymy pokoj o nazwie, przyklad: Gieniek's Room
-                currentRoom = server.createRoom(roomName, this); // TODO sprawdzanie nazwy czy sie powtarza
-                sendMessage("Room created: " + roomName);
-                break;
-            }
-            else if (messageFromClient.equals("2")) {
-                sendMessage("Enter room name: ");
-                requestMessage();
-                String roomName = bufferedReader.readLine();
-                Room roomToJoin = server.getRooms().stream()
-                        .filter(room -> room.getRoomName().equals(roomName))
-                        .findFirst()
-                        .orElse(null);  // Checking if room with entered name exists
-                if (roomToJoin != null) {
-                    if (roomToJoin.getPlayer2() == null) {
-                        roomToJoin.addPlayer2(this);
-                        currentRoom = roomToJoin;
-                        sendMessage("Joined room: " + roomToJoin.getRoomName());
-                        sendMessageToClient("Player has joined your room!", roomToJoin.getHost());
-                        currentRoom.getLatchRoomPhase().countDown();
-                        break;
-                    } else {
-                        sendMessage("Room: " + roomName + " is full");
-                    }
-                } else {
-                    sendMessage("Room not found: " + roomName);
+            switch (messageFromClient) {
+                case "1" -> {
+                    String roomName = String.format(this.username + "'s Room"); // Tworzymy pokoj o nazwie, przyklad: Gieniek's Room
+
+                    currentRoom = server.createRoom(roomName, this); // TODO sprawdzanie nazwy czy sie powtarza
+
+                    sendMessage("Room created: " + roomName);
+                    break label;
                 }
-            }
-            else if (messageFromClient.equals("3")) {
-                sendMessage(server.getRooms().toString());
+                case "2" -> {
+                    sendMessage("Enter room name: ");
+                    requestMessage();
+                    String roomName = bufferedReader.readLine();
+                    Room roomToJoin = server.getRooms().stream()
+                            .filter(room -> room.getRoomName().equals(roomName))
+                            .findFirst()
+                            .orElse(null);  // Checking if room with entered name exists
+
+                    if (roomToJoin != null) {
+                        if (roomToJoin.getPlayer2() == null) {
+                            roomToJoin.addPlayer2(this);
+                            currentRoom = roomToJoin;
+                            sendMessage("Joined room: " + roomToJoin.getRoomName());
+                            sendMessageToClient("Player has joined your room!", roomToJoin.getHost());
+                            currentRoom.getLatchRoomPhase().countDown();
+                            break label;
+                        } else {
+                            sendMessage("Room: " + roomName + " is full");
+                        }
+                    } else {
+                        sendMessage("Room not found: " + roomName);
+                    }
+                }
+                case "3" -> sendMessage(server.getRooms().toString());
             }
         }
     }
 
     public void shipPlacementPhase() throws IOException {
         sendMessage("SHIPS_PLACEMENT_PHASE");
-        int biggestShipSize = 1;
+        int biggestShipSize = 4;
         for(int i = biggestShipSize; i >= 1; i --){
             for(int j = (biggestShipSize + 1) - i; j >= 1; j--){
                 sendMessage(String.format("%d", i));
@@ -109,6 +111,43 @@ public class ClientHandler implements Runnable {
             }
         }
         sendMessage(String.format("%d", 123456789)); // Wiadomosc sygnalizujaca koniec
+    }
+
+    public void gamePhase() throws IOException, InterruptedException {
+
+        while (!currentRoom.isGameOver() && socket.isConnected()) {
+            Thread.sleep(1000);
+            if (currentRoom.getWhoToPlay() == this) {
+                sendMessage("Enter position to shot: ");
+                requestMessage();
+                String position = bufferedReader.readLine(); //a1
+                try {
+                    String processedShot = processShot(position, currentRoom.getArrayBasedOnPlayerWhoDoesntPlay());
+                    switch (processedShot) {
+                        case "SHOT" -> sendMessage("You have shot opponent's ship!");
+                        case "SINKED" -> sendMessage("You have sinked opponent's ship!");
+                        case "MISS" -> {
+                            sendMessage("You have missed!");
+                            currentRoom.setWhoToPlay(currentRoom.getPlayerWhoDoesntPlay());
+                        }
+                    }
+                    if(currentRoom.getArrayBasedOnPlayerWhoDoesntPlay().isEmpty()){
+                        currentRoom.setGameOver(true);
+                    }
+                } catch (IndexOutOfBoundsException e) {
+                    sendMessage("Position unavailable");
+                }
+            }
+        }
+
+        if(this == currentRoom.getWhoToPlay()){
+            sendMessage("YOU HAVE WON!!!!! :)");
+            sendMessage("GAME_OVER_PHASE");
+        }
+        else{
+            sendMessage("You have lost :(");
+            sendMessage("GAME_OVER_PHASE");
+        }
     }
 
 
@@ -148,41 +187,9 @@ public class ClientHandler implements Runnable {
             // Oczekiwanie na ustawienie pozycji drugiego gracza
             latchWaiter(currentRoom.getLatchPlacingPhase(),0);
 
-            while (!currentRoom.isGameOver() && socket.isConnected()) {
-                Thread.sleep(1000);
-                if (currentRoom.getWhoToPlay() == this) {
-                    sendMessage("Enter position to shot: ");
-                    requestMessage();
-                    String position = bufferedReader.readLine(); //a1
-                    try {
-                        String processedShot = processShot(position, currentRoom.getArrayBasedOnPlayerWhoDoesntPlay());
-                        if(processedShot.equals("SHOT")){
-                            sendMessage("You have shot opponent's ship!");
-                        }
-                        else if(processedShot.equals("SINKED")){
-                            sendMessage("You have sinked opponent's ship!");
-                        }
-                        else if(processedShot.equals("MISS")){
-                            sendMessage("You have missed!");
-                            currentRoom.setWhoToPlay(currentRoom.getPlayerWhoDoesntPlay());
-                        }
-                        if(currentRoom.getArrayBasedOnPlayerWhoDoesntPlay().isEmpty()){
-                            currentRoom.setGameOver(true);
-                        }
-                    } catch (IndexOutOfBoundsException e) {
-                        sendMessage("Position unavailable");
-                    }
-                }
-            }
+            // Rozpoczecie gry
+            gamePhase();
 
-            if(this == currentRoom.getWhoToPlay()){
-                sendMessage("YOU HAVE WON!!!!! :)");
-                sendMessage("GAME_OVER_PHASE");
-            }
-            else{
-                sendMessage("You have lost :(");
-                sendMessage("GAME_OVER_PHASE");
-            }
             this.closeEverything(socket,bufferedReader,bufferedWriter, objectInputStream);
 
 
@@ -193,7 +200,6 @@ public class ClientHandler implements Runnable {
 
     public String processShot(String position, ArrayList<ArrayList<String>> playerArrayPositions) {
         String pos = position.toUpperCase();
-        ArrayList<String> foundArray = new ArrayList<String>();
         String searchedPosition;
         for(ArrayList<String> tempArray : playerArrayPositions){
             searchedPosition = tempArray.stream()
