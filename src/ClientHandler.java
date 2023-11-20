@@ -1,11 +1,15 @@
 import java.io.*;
+import java.lang.reflect.Array;
 import java.net.Socket;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 
-public class ClientHandler implements Runnable{
+public class ClientHandler implements Runnable {
 
-    public static ArrayList<ClientHandler> clientHandlers = new ArrayList<>();
-    public static ArrayList<String> roomIds = new ArrayList<>();
+    public static Set<ClientHandler> clientHandlers = new HashSet<>();
     private Socket socket;
     private String username;
     private Server server;
@@ -13,70 +17,42 @@ public class ClientHandler implements Runnable{
     private BufferedWriter bufferedWriter;
     private BufferedReader bufferedReader;
     private InputStream inputStream;
+    ObjectInputStream objectInputStream;
 
-    /**
-     * Constructor for ClientHandler
-     * @param socket from client
-     * @param server server that client is connected to
-     */
-    public ClientHandler(Socket socket, Server server){
-        try{
+
+    public ClientHandler(Socket socket, Server server) {
+        try {
             this.socket = socket;
             this.server = server;
 
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())); // To jest wykorzystywane, zeby moc przesylac Stringi do serwera
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream())); // To jest wykorzystywane, zeby moc odbierac Stringi od serwera
             this.inputStream = socket.getInputStream(); // To jest uzywane zeby moc przesylac bajty do serwera
+            this.objectInputStream = new ObjectInputStream(socket.getInputStream());
 
             this.username = bufferedReader.readLine(); // Po polaczeniu sie clienta z serwerem automatycznie w klient handlerze czekamy na wiadomosc od clienta z usernamem
             clientHandlers.add(this); // Dodajemy kazdego ClientHandlera do listy clientHandlerow zeby moc w razie czego wyszukiwac
 
-        }
-        catch (IOException e){
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        }
-    }
 
-    /**
-     * Function to draw 2d int array
-     * @param board 2d int array to draw
-     */
-    public void drawBoard(int[][] board){ // Funkcja uzywana do debugowania, useless actually
-        int boardSize = 10;
-        for(int i = 0; i<boardSize; i++){
-            for(int j = 0; j<boardSize; j++){
-                System.out.print(board[i][j] + " ");
-            }
-            System.out.println(" ");
-        }
-    }
-
-    /**
-     * Function that request message from client by sending him "REQUEST_DATA" message
-     */
-    public void requestMessage() {
-        try {
-            // Wytlumacze raz dlaczego w taki sposob to wyglada
-            bufferedWriter.write("REQUEST_DATA"); // Zapisujemy faktycznie jaka wiadomosc chcemy wyslac
-            bufferedWriter.newLine(); // Dodajemy na koncu koniec lini zeby bylo bardziej czytelnie
-            bufferedWriter.flush(); // Tutaj przekazujemy te dane z bufora do strumienia wyjsciowego (czyli wysylamy)
         } catch (IOException e) {
             closeEverything(socket, bufferedReader, bufferedWriter);
         }
     }
 
-    /**
-     * Function that reads single line from client
-     * @return String message that is send by client
-     */
-    public String readMessageFromClient() throws IOException {
-        return bufferedReader.readLine(); // Chyba oczywiste, odczytujemy Stringa od Clienta
+    public void requestMessage() {
+        try {
+            bufferedWriter.write("REQUEST_DATA");
+            bufferedWriter.newLine();
+            bufferedWriter.flush();
+        } catch (IOException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter);
+        }
     }
 
-    /**
-     * Function that sends message to client that this ClientHandler is handling
-     * @param message string message to send
-     */
+    public String readMessageFromClient() throws IOException {
+        return bufferedReader.readLine();
+    }
+
     public void sendMessage(String message) {
         try {
             bufferedWriter.write(message);
@@ -87,11 +63,6 @@ public class ClientHandler implements Runnable{
         }
     }
 
-    /**
-     * Function that is used to send message to direct client by passing ClientHandler object
-     * @param message string message to send
-     * @param clientHandler specified recipient
-     */
     public void sendMessageToClient(String message, ClientHandler clientHandler) {
         try {
             clientHandler.bufferedWriter.write(message);
@@ -102,42 +73,250 @@ public class ClientHandler implements Runnable{
         }
     }
 
-    /**
-     * Function that is used to remove clientHandler from clientHandlers array
-     */
-    public void removeClientHandler(){
-        clientHandlers.remove(this);
-    }
-
-    /**
-     * Function to close socket, bufferedReader, bufferedWriter
-     * @param socket to close
-     * @param bufferedReader to close
-     * @param bufferedWriter to close
-     */
-    public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter){
-        removeClientHandler();
-        try{
-            if (bufferedReader != null){
-                bufferedReader.close();
+    public void menuPhase() throws IOException {
+        String messageFromClient;
+        while (socket.isConnected()) {
+            requestMessage();
+            messageFromClient = readMessageFromClient();
+            if (messageFromClient.equals("1")) {
+                String roomName = String.format(this.username + "'s Room"); // Tworzymy pokoj o nazwie, przyklad: Gieniek's Room
+                currentRoom = server.createRoom(roomName, this); // TODO sprawdzanie nazwy czy sie powtarza
+                sendMessage("Room created: " + roomName);
+                break;
             }
-            if(bufferedWriter != null){
-                bufferedWriter.close();
+            else if (messageFromClient.equals("2")) {
+                sendMessage("Enter room name: ");
+                requestMessage();
+                String roomName = bufferedReader.readLine();
+                Room roomToJoin = server.getRooms().stream()
+                        .filter(room -> room.getRoomName().equals(roomName))
+                        .findFirst()
+                        .orElse(null);  // Checking if room with entered name exists
+                if (roomToJoin != null) {
+                    if (roomToJoin.getPlayer2() == null) {
+                        roomToJoin.addPlayer2(this);
+                        currentRoom = roomToJoin;
+                        sendMessage("Joined room: " + roomToJoin.getRoomName());
+                        sendMessageToClient("Player has joined your room!", roomToJoin.getHost());
+                        currentRoom.getLatchRoomPhase().countDown();
+                        break;
+                    } else {
+                        sendMessage("Room: " + roomName + " is full");
+                    }
+                } else {
+                    sendMessage("Room not found: " + roomName);
+                }
             }
-            if (socket != null) {
-                socket.close();
+            else if (messageFromClient.equals("3")) {
+                sendMessage(server.getRooms().toString());
             }
         }
-        catch(IOException e){
-            e.printStackTrace();
+    }
+
+    public void shipPlacementPhase() throws IOException {
+        sendMessage("SHIPS_PLACEMENT_PHASE");
+        int biggestShipSize = 4;
+        for(int i = biggestShipSize; i >= 1; i --){
+            for(int j = (biggestShipSize + 1) - i; j >= 1; j--){
+                sendMessage(String.format("%d", i));
+                bufferedReader.readLine();
+            }
+        }
+        sendMessage(String.format("%d", 123456789)); // Wiadomosc sygnalizujaca koniec
+    }
+
+    public int[][] array2dReceiver() throws IOException {
+        byte[] receivedData = new byte[400];
+        inputStream.read(receivedData);
+        int[][] receivedGameBoard = convertBytesToIntArray(receivedData);
+        return receivedGameBoard;
+    }
+
+    public void gameBoardsSetter(int[][] receivedGameBoard) throws IOException, ClassNotFoundException {
+        SerializableArrayList receivedData = (SerializableArrayList) objectInputStream.readObject();
+        ArrayList<ArrayList<String>> data = receivedData.getData();
+        if(currentRoom.getHost() == this){
+            currentRoom.setHostBoard(receivedGameBoard);
+            currentRoom.setHostArrayList(data);
+        }
+        else if(currentRoom.getPlayer2() == this){
+            currentRoom.setPlayer2Board(receivedGameBoard);
+            currentRoom.getLatchPlacingPhase().countDown();
+            currentRoom.setPlayer2ArrayList(data);
         }
     }
 
-    /**
-     * Function to convert Bytes to 2 dimensional intArray
-     * @param bytes to convert from
-     * @return 2d int array
-     */
+    public void latchWaiter(CountDownLatch latchToCheck, int valueToCheck) throws InterruptedException {
+        while(latchToCheck.getCount() > valueToCheck){
+            Thread.sleep(1000);
+        }
+    }
+
+    @Override
+    public void run() {
+        try {
+            // Rozpoczecie fazy menu
+            menuPhase();
+
+            // Oczekiwanie na drugiego gracza w pokoju
+            latchWaiter(currentRoom.getLatchRoomPhase(), 0);
+
+            // Rozpoczecie fazy ship placement
+            shipPlacementPhase();
+
+            // Odbior tablicy (planszy gry)
+            int[][] receivedGameBoard = array2dReceiver();
+
+            // Ustawienie tablic (plansz gier)
+            gameBoardsSetter(receivedGameBoard);
+
+            // Oczekiwanie na ustawienie pozycji drugiego gracza
+            latchWaiter(currentRoom.getLatchPlacingPhase(),0);
+
+            while (!currentRoom.isGameOver() && socket.isConnected()) {
+                Thread.sleep(1000);
+                if (currentRoom.getWhoToPlay() == this) {
+                    sendMessage("Enter position to shot: ");
+                    requestMessage();
+                    String position = bufferedReader.readLine(); //a1
+                    int[] X_Y = new int[2];
+                    try {
+                        X_Y = processPosition(position);
+                        int x = X_Y[0];
+                        int y = X_Y[1];
+                        if (currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()[x][y] != 0 && currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()[x][y] != 9) {
+                            currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()[x][y] = 9;
+                            //sendMessage("HIT_PHASE_GOTHIT");
+                            if(!isLastManStanding(x,y, currentRoom.getBoardBasedOnPlayerWhoDoesntPlay())) {
+                                sendMessage("You have shot opponent's ship!");
+                                sendMessageToClient("Opponent has shot your ship!",currentRoom.getPlayerWhoDoesntPlay());
+                            }
+                            else{
+                                sendMessage("You have sinked opponent's ship!");
+                                sendMessageToClient("Opponent has sinked your ship!",currentRoom.getPlayerWhoDoesntPlay());
+                            }
+
+                        }
+                        else{
+                            sendMessage("You have missed!");
+                            currentRoom.setWhoToPlay(currentRoom.getPlayerWhoDoesntPlay());
+                        }
+                        currentRoom.setGameOver(checkIfGameIsOver(currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()));
+
+                    } catch (IndexOutOfBoundsException e) {
+                        sendMessage("Position unavailable");
+                    }
+                }
+            }
+
+            if(this == currentRoom.getWhoToPlay()){
+                sendMessage("YOU HAVE WON!!!!! :)");
+                sendMessage("GAME_OVER_PHASE");
+            }
+            else{
+                sendMessage("You have lost :(");
+                sendMessage("GAME_OVER_PHASE");
+            }
+            this.closeEverything(socket,bufferedReader,bufferedWriter);
+
+
+        } catch (IOException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter);
+        } catch (InterruptedException | ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
+
+    }
+
+    public boolean checkIfGameIsOver(int[][] gameBoardToCheck){
+        for (int i = 0; i < 10; i++){
+            for(int j = 0; j < 10; j++){
+                if(gameBoardToCheck[i][j] != 0 && gameBoardToCheck[i][j] != 9) return false;
+            }
+        }
+        return true;
+    }
+
+    public int[] processPosition(String position) {
+        int gameBoardSize = 10;
+        position = position.toUpperCase();
+        char letter = position.charAt(0);
+        int number = Character.getNumericValue(position.charAt(1)) - 1;
+
+        // Przeksztalcamy literę na indeks wiersza (np. A -> 0, B -> 1, C -> 2)
+        // row = x, number = y
+        int row = (int) letter - (int) 'A';
+        if (row >= 0 && row < gameBoardSize && number >= 0 && number < gameBoardSize) {
+            return new int[]{row, number};
+        }
+        else {
+            throw new IndexOutOfBoundsException();
+        }
+
+    }
+
+    ArrayList<ArrayList<String>> hostPositions = new ArrayList<>();
+    public boolean processShot(String position) {
+        String pos = position.toUpperCase();
+        ArrayList<String> foundArray = new ArrayList<String>();
+        String searchedPosition;
+        for(ArrayList<String> tempArray : hostPositions){
+            searchedPosition = tempArray.stream()
+                    .filter(s -> s.equals(pos))
+                    .findFirst()
+                    .orElse("NULL");
+            if(!searchedPosition.equals("NULL")) {
+                tempArray.remove(pos);
+                return !tempArray.isEmpty();
+            }
+        }
+        return false;
+    }
+
+    public boolean isLastManStanding(int x, int y, int[][] gameBoard) {
+        int shipNumber = gameBoard[x][y];
+        // Przypadek pierwszego wiersza
+        if (x == 0) {
+            // Sprawdzamy wiersz nizej
+            if (gameBoard[x + 1][y] != shipNumber) {
+                return true;
+            }
+        }
+        // Przypadek ostatniego wiersza
+        else if (x == 9) {
+            // Sprawdzamy wiersz wyzej
+            if (gameBoard[x - 1][y] != shipNumber) {
+                return true;
+            }
+        } else {
+            // Przypadek srodka, sprawdzamy gora dol
+            if (gameBoard[x - 1][y] != shipNumber || gameBoard[x + 1][y] != shipNumber) {
+                return true;
+            }
+        }
+        // Przypadek lewego brzegu
+        if (y == 0) {
+            // Sprawdzamy prawy brzeg
+            if (gameBoard[x][y + 1] != shipNumber) {
+                return true;
+            }
+        }
+        // Przypadek prawego brzegu
+        else if (y == 9) {
+            // Sprawdzamy lewy brzeg
+            if (gameBoard[x][y - 1] != shipNumber) {
+                return true;
+            }
+        }
+        // Przypadek srodka, sprawdzamy lewo prawo
+        else {
+            if (gameBoard[x][y + 1] != shipNumber || gameBoard[x][y - 1] != shipNumber) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public int[][] convertBytesToIntArray(byte[] bytes) {
         ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
         DataInputStream dis = new DataInputStream(bis);
@@ -157,99 +336,25 @@ public class ClientHandler implements Runnable{
         return array;
     }
 
-    /**
-     * Function that is autostarting when thread is started
-     */
-    @Override
-    public void run() {
-        String messageFromClient;   // String to save read message from client
-        Boolean step1 = false;      // Flag to stop 1st while loop TODO mysle ze da sie bez flagi za pomoca break
+    public void removeClientHandler() {
+        clientHandlers.remove(this);
+    }
 
-        try{
-            // Moj zamysl byl taki zeby zrobic cala obsluge Clienta w tej klasie bo idk jak sie robi inaczej
-            // Ma to dzialac w ten sposob, ze wejdziemy w kilka faz
-            // Faza pierwsza (step1) to faza domyslna czyli wybieranie co chcemy zrobic
-            // Tutaj mozemy 1. Stworzyc swoj pokoj
-            // 2. Doalaczyc do pokoju
-            // 3. Zobaczysz liste pokojow
-            // Dopoki nie zrobimy 1 lub 2 etapu dobrze to nie przejdziemy dalej, bo petla sie bedzie powtarzac
-
-            // Plan tez mialem taki, zeby serwer wysylal kiedy chce dostac co od clienta
-            // Dlatego aktualnie client nasluchuje caly czas wiadomosci od serwera i kiedy otrzyma polecenie o konkretnym kodzie (tresci)
-            // To robi konkretne rzeczy, widac to w funkcji Clienta ktora odbiera wiadomsoci
-            while(socket.isConnected() && !step1){
-                requestMessage(); // Wysylamy prosbe o przeslanie wiadomosci (wyjasnienie jak to dziala jest w funkcjach Clienta)
-                messageFromClient = readMessageFromClient(); // Tutaj odczytujemy przeslana wiadomosc
-
-                // First option is to create room
-                if(messageFromClient.equals("1")){ // Jesli odczytania wiadomosc to 1 (tworzenie pokoju)
-                    String roomName = String.format(this.username + "'s Room"); // Tworzymy pokoj o nazwie, przyklad: Gieniek's Room
-                    // TODO prawdopodobnie beda problemy kiedy bedziemy mieli graczy o tej samej nazwie
-                    // TODO wiec mysle ze trzeba bedzie zrobic dodawanie samemu nazwy pokoju i sprawdzanie czy taki pokoj juz nie istnieje
-                    currentRoom = server.createRoom(roomName, this); // Tworzymy pokoj, od razu przekazujemy hosta
-                    sendMessage("Room created: " + roomName); // Wysylamy wiadomosc do clienta ze zrobil pokoj
-                    step1 = true;   // Break from loop when room created
-                }
-                // Second option is to join to existing room
-                else if (messageFromClient.equals("2")){
-                    sendMessage("Enter room name: "); // Wysylamy komunikat do klienta zeby podal roomName do ktorego chce wbic
-                    requestMessage(); // Prosimy o przeslanie danych
-                    String roomName = bufferedReader.readLine(); // Tutaj odczytujemy co podal
-                    Room roomToJoin = server.getRooms().stream()
-                            .filter(room -> room.getRoomName().equals(roomName))
-                            .findFirst()
-                            .orElse(null);  // Checking if room with entered name exists
-                    if (roomToJoin != null){
-                        // Checking if room is not full already
-                        if(roomToJoin.getPlayer2() == null){
-                            roomToJoin.addPlayer2(this);
-                            currentRoom = roomToJoin;
-                            sendMessage("Joined room: " + roomToJoin.getRoomName()); // To jest wiadomosc wyslana do obecnego ClientHandlera, czyli do goscia co chce wbic do pokoju
-                            sendMessageToClient("Player has joined your room!",roomToJoin.getHost()); // To wiadomosc wysylana do hosta pokoju
-                            step1 = true;   // Break from loop when joined room
-                        }
-                        else{
-                            sendMessage("Room: " + roomName + " is full");
-                        }
-                    }
-                    else {
-                        sendMessage("Room not found: " + roomName);
-                    }
-                }
-                // Third option is to view (send view) of existing rooms
-                else if (messageFromClient.equals("3")){
-                    sendMessage(server.getRooms().toString());
-                }
+    public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter) {
+        removeClientHandler();
+        try {
+            if (bufferedReader != null) {
+                bufferedReader.close();
             }
-
-            // Zamysl jest taki, ze po tym jak sa dwie osoby w pokoju to wchodzimy w faze ukladania statkow
-            sendMessage("SHIPS_PLACEMENT_PHASE"); // Wysylamy wiadomosc do klienta, ktory ja przetwarza i robi swoje rzeczy (do zobaczenia w klasie Client)
-            int shipsAmount = 4; // Dla testowania przyjalem 4 statkik
-            String ack;
-            sendMessage(String.format("%d",shipsAmount)); // Przesylam klientowi ile statkow ma ulozyc
-            for(int i = 1; i <= shipsAmount; i++){
-                sendMessage(String.format("%d",i)); // Przesylam klientowi jakiej wielkosci ma byc statek
-                // Ogolnie jest to na razie zrobione tak ze uzylem petli for, bo nie chcialo mi sie pisac tego kilka razy, wiec na razie jest
-                // 1 blokowy 1 statek, 2 blokowy 1 statek itd.
-                ack = bufferedReader.readLine(); // TODO ogolnie nie wiedzialem czy to bedzie dzialac bez tego
-                // TODO logika moja byla taka, zeby ta petla sie nie wywyolala od razu cala
-                // TODO to klient musi potwierdzic ze zrobil co mial zrobic zeby przeszlo dalej
-                // TODO w tym celu wysylam ack message, nawet nie sprawdzamy jej tresci tylko po prostu czekamy az cos przesle
-                // TODO trzeba sprawdzic czy jest to konieczne
+            if (bufferedWriter != null) {
+                bufferedWriter.close();
             }
-
-            while(socket.isConnected()){
-                /*byte[] receivedData = new byte[400];
-                inputStream.read(receivedData);
-
-                int[][] receivedGameBoard = convertBytesToIntArray(receivedData);
-                drawBoard(receivedGameBoard);*/
+            if (socket != null) {
+                socket.close();
             }
+        } catch (IOException e) {
+            e.printStackTrace();
         }
-        catch (IOException e){
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        }
-
     }
 
 

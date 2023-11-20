@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Scanner;
 
@@ -12,6 +13,7 @@ public class Client {
     private String username;
     private int[][] gameBoard, shootBoard;
     private OutputStream outputStream;
+    private ObjectOutputStream objectOutputStream;
 
     public Client() {
         this.gameBoard = new int[10][10];
@@ -35,6 +37,7 @@ public class Client {
                 Arrays.fill(shootBoard[i], 0);
             }
             this.outputStream = socket.getOutputStream();
+            this.objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
         }
         catch (IOException e){
             closeEverything(socket, bufferedReader, bufferedWriter);
@@ -164,7 +167,7 @@ public class Client {
         return true;
     }
 
-    // Ta funkcja sprawdza czy na danej pozycji nie mamy juz zajete miejsca
+
     public boolean isPositionEmpty(int x, int y) {
         int fillingCharacter = 0;
         int gameBoardSize = 10;
@@ -174,10 +177,6 @@ public class Client {
         return false;
     }
 
-    // Ta funkcja sprawdza czy sasiedzi pozycji nie sa juz zajeci, bo jak wiemy w statkach nie mozemy obok siebie ich klasc
-    // Ogolnie to ogarnialem z Filipem, wiec mysle ze nie musze tego bardzo tlumaczyc
-    // Kamil to szybko zalapie bo to w jego stylu zadanie
-    // Pewnie jeszcze powie ze dalo sie lepiej zrobic
     public boolean isPositionAvailable(int x, int y){
         if(isPositionEmpty(x, y)){
             // Przypadek pierwszego wiersza
@@ -223,6 +222,11 @@ public class Client {
             return true;
         }
         return false;
+    }
+
+    public static void clearScreen() {
+        System.out.print("\033[H\033[2J");
+        System.out.flush();
     }
 
     public void drawGameBoard(){
@@ -271,68 +275,72 @@ public class Client {
     }
 
     public void start() {
-        // Wątek nasłuchujący serwera
-        Thread serverListenerThread = new Thread(() -> {
+        boolean keepGoing = true;
             try {
-                while (true) {
-                    String messageFromServer = bufferedReader.readLine(); // Caly czas jestesmy gotowi do odebrania wiadomosci od serwera
-                    processServerMessage(messageFromServer); // Odczytana wiadomosc przekazujemy do obslugi wiadomosci (funkcja processServerMessage)
+                while (keepGoing) {
+                    String messageFromServer = bufferedReader.readLine();
+                    keepGoing = processServerMessage(messageFromServer);
                 }
-            } catch (IOException e) {
+            }
+            catch (IOException e) {
                 e.printStackTrace();
             }
-        });
-        serverListenerThread.start();
-    }
+        }
 
-    public void processServerMessage(String messageFromServer) throws IOException {
-        // W ten sposob wiemy, ze serwer chce zebysmy wprowadzili jakis input
-        // Czyli jak odbierzemy komunikat od serwera "REQUEST_DATA" to wiemy co mamy zrobic
+    public boolean processServerMessage(String messageFromServer) throws IOException {
         if (messageFromServer.equals("REQUEST_DATA")) {
-            // Serwer prosi o przesłanie danych
-            System.out.println("Player input: ");
+            System.out.print("Player input: ");
             Scanner scannerProcess = new Scanner(System.in);
             String messageToServer = scannerProcess.nextLine();
             sendMessage(messageToServer);
+            return true;
         }
         // Tutaj jak odbierzemy taki komunikat, to wchodzimy w faze kladzenia statkow
         else if(messageFromServer.equals("SHIPS_PLACEMENT_PHASE")){
+            ArrayList<ArrayList<String>> arrayToSend = new ArrayList<>();
             String positions;
             Scanner scannerShips = new Scanner(System.in);
-            int shipsAmount = Integer.parseInt(bufferedReader.readLine()); // Pierwsza wiadomosc ktora mamy otrzymac od serwera to ile statkow
             int shipLength = 1;
-            boolean flaga = true;
 
             System.out.println("PLACE YOUR SHIPS");
             System.out.println("Placing ship example format for 3 block ship: a1 a2 a3\n");
-            for(int i = 1; i<=shipsAmount; i++){
-                if(flaga) shipLength = Integer.parseInt(bufferedReader.readLine()); // Odbieramy wiadomosc od serwera odnosnie wielkosci statku, jesli flaga jest true
+
+            shipLength = Integer.parseInt(bufferedReader.readLine());
+            while(true){
                 drawGameBoard(); // Rysujemy obecna plansze
                 System.out.println("Place " + shipLength + " block size ship:");
                 positions = scannerShips.nextLine();
-                // Jesli placeShips zwroci nam wartosc true to mozemy przejsc dalej, czyli statki sa ulozone dobrze i potwierdzamy i przechodzimy dalej
                 if(placeShips(shipLength, positions)){
-                    sendMessage("ack"); // Nie wiem czy to potrzebne, ale w ten sposob potwierdzam ze klient jest gotowy do odbioru danych
-                    flaga = true;
-                }
-                // Natomiast jesli nam zwroci false, to znaczy ze pozycja statkow byla zla i trzeba jeszcze raz poprosic o to samo
-                else{
-                    i = i-1;
-                    flaga = false;
+                    positions = positions.toUpperCase();
+                    arrayToSend.add(new ArrayList<String>((Arrays.asList(positions.split(" ")))));
+                    sendMessage("ack");
+                    shipLength = Integer.parseInt(bufferedReader.readLine());
+                    clearScreen();
+                    if(shipLength == 123456789) break;
                 }
             }
             System.out.println("Your final board:\n");
             drawGameBoard();
+
+            // Wyslanie tablicy do serwera:
+            byte[] dataToSend = convertIntArrayToBytes(gameBoard);
+            outputStream.write(dataToSend);
+
+            // Wyslanie arrayToSend do serwera:
+            SerializableArrayList serializableArrayToSend = new SerializableArrayList(arrayToSend);
+            objectOutputStream.writeObject(serializableArrayToSend);
+
+            return true;
         }
-        // Aktualnie defaultowy przypadek to po prostu wyswietlenie co serwer wyslal w terminalu clienta
-        // Jest tak zrobione bo latwo sie tego uzywa, tak to trzeba byloby za kazdym razem wysylac:
-        // Wiadomosc ze ma wyswietlic i pozniej jeszcze raz wysylac jaka ma wyswietlic
-        // Mozliwe ze pozniej sie okaze ze trzeba to zmienic, bo cos tam cos tam
-        // To wtedy sie zmieni, na razie dziala
+        else if(messageFromServer.equals("GAME_OVER_PHASE")){
+            return false;
+        }
         else {
             System.out.println("\n" + messageFromServer);
+            return true;
         }
     }
+
 
     public static void main(String[] args) throws IOException, InterruptedException {
         Socket socket = new Socket("localhost", 1234);
@@ -349,5 +357,6 @@ public class Client {
         client.start(); // Ropoczynamy nasluchiwanie w oddzielnym watku, zeby nie zacinac wszystkiego
         // W sumie to nie jestem pewny czy to trzeba w osobnym watku, ale tak jest cool B)
         // Wyjasnienie dzialania klienta warto zaczac od funkcji start
+        System.out.println("Thank you for playing <3");
     }
 }
