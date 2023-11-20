@@ -16,7 +16,6 @@ public class ClientHandler implements Runnable {
     private Room currentRoom;
     private BufferedWriter bufferedWriter;
     private BufferedReader bufferedReader;
-    private InputStream inputStream;
     ObjectInputStream objectInputStream;
 
 
@@ -27,50 +26,37 @@ public class ClientHandler implements Runnable {
 
             this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())); // To jest wykorzystywane, zeby moc przesylac Stringi do serwera
             this.bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream())); // To jest wykorzystywane, zeby moc odbierac Stringi od serwera
-            this.inputStream = socket.getInputStream(); // To jest uzywane zeby moc przesylac bajty do serwera
             this.objectInputStream = new ObjectInputStream(socket.getInputStream());
 
             this.username = bufferedReader.readLine(); // Po polaczeniu sie clienta z serwerem automatycznie w klient handlerze czekamy na wiadomosc od clienta z usernamem
             clientHandlers.add(this); // Dodajemy kazdego ClientHandlera do listy clientHandlerow zeby moc w razie czego wyszukiwac
 
-
-        } catch (IOException e) {
-            closeEverything(socket, bufferedReader, bufferedWriter);
+        }
+        catch (IOException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter, objectInputStream);
         }
     }
 
-    public void requestMessage() {
-        try {
-            bufferedWriter.write("REQUEST_DATA");
-            bufferedWriter.newLine();
-            bufferedWriter.flush();
-        } catch (IOException e) {
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        }
+    public void requestMessage() throws IOException {
+        bufferedWriter.write("REQUEST_DATA");
+        bufferedWriter.newLine();
+        bufferedWriter.flush();
     }
 
     public String readMessageFromClient() throws IOException {
         return bufferedReader.readLine();
     }
 
-    public void sendMessage(String message) {
-        try {
-            bufferedWriter.write(message);
-            bufferedWriter.newLine();
-            bufferedWriter.flush();
-        } catch (IOException e) {
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        }
+    public void sendMessage(String message) throws IOException {
+        bufferedWriter.write(message);
+        bufferedWriter.newLine();
+        bufferedWriter.flush();
     }
 
-    public void sendMessageToClient(String message, ClientHandler clientHandler) {
-        try {
-            clientHandler.bufferedWriter.write(message);
-            clientHandler.bufferedWriter.newLine();
-            clientHandler.bufferedWriter.flush();
-        } catch (IOException e) {
-            closeEverything(clientHandler.socket, clientHandler.bufferedReader, clientHandler.bufferedWriter);
-        }
+    public void sendMessageToClient(String message, ClientHandler clientHandler) throws IOException {
+        clientHandler.bufferedWriter.write(message);
+        clientHandler.bufferedWriter.newLine();
+        clientHandler.bufferedWriter.flush();
     }
 
     public void menuPhase() throws IOException {
@@ -115,7 +101,7 @@ public class ClientHandler implements Runnable {
 
     public void shipPlacementPhase() throws IOException {
         sendMessage("SHIPS_PLACEMENT_PHASE");
-        int biggestShipSize = 4;
+        int biggestShipSize = 1;
         for(int i = biggestShipSize; i >= 1; i --){
             for(int j = (biggestShipSize + 1) - i; j >= 1; j--){
                 sendMessage(String.format("%d", i));
@@ -125,24 +111,16 @@ public class ClientHandler implements Runnable {
         sendMessage(String.format("%d", 123456789)); // Wiadomosc sygnalizujaca koniec
     }
 
-    public int[][] array2dReceiver() throws IOException {
-        byte[] receivedData = new byte[400];
-        inputStream.read(receivedData);
-        int[][] receivedGameBoard = convertBytesToIntArray(receivedData);
-        return receivedGameBoard;
-    }
 
-    public void gameBoardsSetter(int[][] receivedGameBoard) throws IOException, ClassNotFoundException {
+    public void gameBoardsSetter() throws IOException, ClassNotFoundException {
         SerializableArrayList receivedData = (SerializableArrayList) objectInputStream.readObject();
         ArrayList<ArrayList<String>> data = receivedData.getData();
         if(currentRoom.getHost() == this){
-            currentRoom.setHostBoard(receivedGameBoard);
             currentRoom.setHostArrayList(data);
         }
         else if(currentRoom.getPlayer2() == this){
-            currentRoom.setPlayer2Board(receivedGameBoard);
-            currentRoom.getLatchPlacingPhase().countDown();
             currentRoom.setPlayer2ArrayList(data);
+            currentRoom.getLatchPlacingPhase().countDown();
         }
     }
 
@@ -164,11 +142,8 @@ public class ClientHandler implements Runnable {
             // Rozpoczecie fazy ship placement
             shipPlacementPhase();
 
-            // Odbior tablicy (planszy gry)
-            int[][] receivedGameBoard = array2dReceiver();
-
             // Ustawienie tablic (plansz gier)
-            gameBoardsSetter(receivedGameBoard);
+            gameBoardsSetter();
 
             // Oczekiwanie na ustawienie pozycji drugiego gracza
             latchWaiter(currentRoom.getLatchPlacingPhase(),0);
@@ -208,26 +183,13 @@ public class ClientHandler implements Runnable {
                 sendMessage("You have lost :(");
                 sendMessage("GAME_OVER_PHASE");
             }
-            this.closeEverything(socket,bufferedReader,bufferedWriter);
+            this.closeEverything(socket,bufferedReader,bufferedWriter, objectInputStream);
 
 
-        } catch (IOException e) {
-            closeEverything(socket, bufferedReader, bufferedWriter);
-        } catch (InterruptedException | ClassNotFoundException e) {
-            throw new RuntimeException(e);
+        } catch (IOException | InterruptedException | ClassNotFoundException e) {
+            closeEverything(socket, bufferedReader, bufferedWriter, objectInputStream);
         }
-
     }
-
-    public boolean checkIfGameIsOver(int[][] gameBoardToCheck){
-        for (int i = 0; i < 10; i++){
-            for(int j = 0; j < 10; j++){
-                if(gameBoardToCheck[i][j] != 0 && gameBoardToCheck[i][j] != 9) return false;
-            }
-        }
-        return true;
-    }
-
 
     public String processShot(String position, ArrayList<ArrayList<String>> playerArrayPositions) {
         String pos = position.toUpperCase();
@@ -250,37 +212,26 @@ public class ClientHandler implements Runnable {
         return "MISS";
     }
 
-    public int[][] convertBytesToIntArray(byte[] bytes) {
-        ByteArrayInputStream bis = new ByteArrayInputStream(bytes);
-        DataInputStream dis = new DataInputStream(bis);
-
-        int[][] array = new int[10][10];
-
-        try {
-            for (int i = 0; i < array.length; i++) {
-                for (int j = 0; j < array[i].length; j++) {
-                    array[i][j] = dis.readInt();
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
-        return array;
-    }
-
     public void removeClientHandler() {
         clientHandlers.remove(this);
     }
 
-    public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter) {
+    public void removeRoom(){
+        server.getRooms().remove(currentRoom);
+    }
+
+    public void closeEverything(Socket socket, BufferedReader bufferedReader, BufferedWriter bufferedWriter, ObjectInputStream objectInputStream) {
         removeClientHandler();
+        removeRoom();
         try {
             if (bufferedReader != null) {
                 bufferedReader.close();
             }
             if (bufferedWriter != null) {
                 bufferedWriter.close();
+            }
+            if(objectInputStream != null){
+                objectInputStream.close();
             }
             if (socket != null) {
                 socket.close();

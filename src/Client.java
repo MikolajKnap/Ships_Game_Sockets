@@ -132,8 +132,20 @@ public class Client {
         // Dla każdej pozycji statku
         for (String position : positionsArray) {
             // Wyodrebniamy literę i cyfrę
-            char letter = position.charAt(0);
-            int number = Character.getNumericValue(position.charAt(1)) - 1;
+            char letter;
+            int number;
+            if(position.length() == 3){
+                letter = position.charAt(0);
+                number = Integer.parseInt(String.format("%c%c",position.charAt(1),position.charAt(2))) - 1;
+            }
+            else if(position.length() == 2){
+                letter = position.charAt(0);
+                number = Character.getNumericValue(position.charAt(1)) - 1;
+            }
+            else{
+                System.out.println("Position unavailable");
+                return false;
+            }
 
             // Przeksztalcamy literę na indeks wiersza (np. A -> 0, B -> 1, C -> 2)
             int row = (int) letter - (int) 'A';
@@ -321,10 +333,6 @@ public class Client {
             }
             System.out.println("Your final board:\n");
             drawGameBoard();
-
-            // Wyslanie tablicy do serwera:
-            byte[] dataToSend = convertIntArrayToBytes(gameBoard);
-            outputStream.write(dataToSend);
 
             // Wyslanie arrayToSend do serwera:
             SerializableArrayList serializableArrayToSend = new SerializableArrayList(arrayToSend);
