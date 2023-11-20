@@ -81,6 +81,15 @@ public class Room {
         }
     }
 
+    public ArrayList<ArrayList<String>> getArrayBasedOnPlayerWhoDoesntPlay() {
+        if(whoToPlay != host){
+            return hostArrayList;
+        }
+        else{
+            return player2ArrayList;
+        }
+    }
+
     public String getRoomName() {
         return roomName;
     }

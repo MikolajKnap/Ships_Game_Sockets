@@ -179,30 +179,21 @@ public class ClientHandler implements Runnable {
                     sendMessage("Enter position to shot: ");
                     requestMessage();
                     String position = bufferedReader.readLine(); //a1
-                    int[] X_Y = new int[2];
                     try {
-                        X_Y = processPosition(position);
-                        int x = X_Y[0];
-                        int y = X_Y[1];
-                        if (currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()[x][y] != 0 && currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()[x][y] != 9) {
-                            currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()[x][y] = 9;
-                            //sendMessage("HIT_PHASE_GOTHIT");
-                            if(!isLastManStanding(x,y, currentRoom.getBoardBasedOnPlayerWhoDoesntPlay())) {
-                                sendMessage("You have shot opponent's ship!");
-                                sendMessageToClient("Opponent has shot your ship!",currentRoom.getPlayerWhoDoesntPlay());
-                            }
-                            else{
-                                sendMessage("You have sinked opponent's ship!");
-                                sendMessageToClient("Opponent has sinked your ship!",currentRoom.getPlayerWhoDoesntPlay());
-                            }
-
+                        String processedShot = processShot(position, currentRoom.getArrayBasedOnPlayerWhoDoesntPlay());
+                        if(processedShot.equals("SHOT")){
+                            sendMessage("You have shot opponent's ship!");
                         }
-                        else{
+                        else if(processedShot.equals("SINKED")){
+                            sendMessage("You have sinked opponent's ship!");
+                        }
+                        else if(processedShot.equals("MISS")){
                             sendMessage("You have missed!");
                             currentRoom.setWhoToPlay(currentRoom.getPlayerWhoDoesntPlay());
                         }
-                        currentRoom.setGameOver(checkIfGameIsOver(currentRoom.getBoardBasedOnPlayerWhoDoesntPlay()));
-
+                        if(currentRoom.getArrayBasedOnPlayerWhoDoesntPlay().isEmpty()){
+                            currentRoom.setGameOver(true);
+                        }
                     } catch (IndexOutOfBoundsException e) {
                         sendMessage("Position unavailable");
                     }
@@ -237,84 +228,26 @@ public class ClientHandler implements Runnable {
         return true;
     }
 
-    public int[] processPosition(String position) {
-        int gameBoardSize = 10;
-        position = position.toUpperCase();
-        char letter = position.charAt(0);
-        int number = Character.getNumericValue(position.charAt(1)) - 1;
 
-        // Przeksztalcamy literę na indeks wiersza (np. A -> 0, B -> 1, C -> 2)
-        // row = x, number = y
-        int row = (int) letter - (int) 'A';
-        if (row >= 0 && row < gameBoardSize && number >= 0 && number < gameBoardSize) {
-            return new int[]{row, number};
-        }
-        else {
-            throw new IndexOutOfBoundsException();
-        }
-
-    }
-
-    ArrayList<ArrayList<String>> hostPositions = new ArrayList<>();
-    public boolean processShot(String position) {
+    public String processShot(String position, ArrayList<ArrayList<String>> playerArrayPositions) {
         String pos = position.toUpperCase();
         ArrayList<String> foundArray = new ArrayList<String>();
         String searchedPosition;
-        for(ArrayList<String> tempArray : hostPositions){
+        for(ArrayList<String> tempArray : playerArrayPositions){
             searchedPosition = tempArray.stream()
                     .filter(s -> s.equals(pos))
                     .findFirst()
                     .orElse("NULL");
             if(!searchedPosition.equals("NULL")) {
                 tempArray.remove(pos);
-                return !tempArray.isEmpty();
+                if(!tempArray.isEmpty()) return "SHOT";
+                else {
+                    playerArrayPositions.remove(tempArray);
+                    return "SINKED";
+                }
             }
         }
-        return false;
-    }
-
-    public boolean isLastManStanding(int x, int y, int[][] gameBoard) {
-        int shipNumber = gameBoard[x][y];
-        // Przypadek pierwszego wiersza
-        if (x == 0) {
-            // Sprawdzamy wiersz nizej
-            if (gameBoard[x + 1][y] != shipNumber) {
-                return true;
-            }
-        }
-        // Przypadek ostatniego wiersza
-        else if (x == 9) {
-            // Sprawdzamy wiersz wyzej
-            if (gameBoard[x - 1][y] != shipNumber) {
-                return true;
-            }
-        } else {
-            // Przypadek srodka, sprawdzamy gora dol
-            if (gameBoard[x - 1][y] != shipNumber || gameBoard[x + 1][y] != shipNumber) {
-                return true;
-            }
-        }
-        // Przypadek lewego brzegu
-        if (y == 0) {
-            // Sprawdzamy prawy brzeg
-            if (gameBoard[x][y + 1] != shipNumber) {
-                return true;
-            }
-        }
-        // Przypadek prawego brzegu
-        else if (y == 9) {
-            // Sprawdzamy lewy brzeg
-            if (gameBoard[x][y - 1] != shipNumber) {
-                return true;
-            }
-        }
-        // Przypadek srodka, sprawdzamy lewo prawo
-        else {
-            if (gameBoard[x][y + 1] != shipNumber || gameBoard[x][y - 1] != shipNumber) {
-                return true;
-            }
-        }
-        return false;
+        return "MISS";
     }
 
     public int[][] convertBytesToIntArray(byte[] bytes) {
